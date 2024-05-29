@@ -1,0 +1,153 @@
+
+CREATE OR REPLACE PROCEDURE LOAD_FILE(DB VARCHAR, SCHEMANAME VARCHAR, TABLENAME VARCHAR)
+RETURNS STRING
+LANGUAGE JAVASCRIPT
+EXECUTE AS CALLER
+AS
+$$
+
+var stmt = snowflake.createStatement({
+sqlText: 'WITH keys AS (SELECT OBJECT_KEYS(PARSE_JSON($1)) AS column_names FROM @"TEST_ABHAY"."INGESTION_SCHEMA_PARQUET"."TABLEA_EMPING_STAGE"/ (FILE_FORMAT => TEST_ABHAY.INGESTION_SCHEMA_PARQUET.PARQUET_EMP_ING) LIMIT 1) SELECT column_names FROM keys',
+
+});
+
+var stmt = snowflake.createStatement({
+    sqlText: `
+        WITH keys AS (
+            SELECT OBJECT_KEYS(PARSE_JSON($1)) AS column_names 
+            FROM @"TEST_ABHAY"."INGESTION_SCHEMA_PARQUET"."TABLEA_EMPING_STAGE"/ 
+            (FILE_FORMAT => TEST_ABHAY.INGESTION_SCHEMA_PARQUET.PARQUET_EMP_ING) 
+            LIMIT 1
+        ) 
+        SELECT column_names 
+        FROM keys
+    `,
+});
+
+stmt.execute();
+
+
+try{
+   var result = stmt.execute();
+   result.next();
+   var v_column_names = result.getColumnValue(1);
+} catch(err){
+    return "Error :" + err;
+}
+
+
+var select_list = v_column_names.map(function(column) {
+return "PARSE_JSON($1):" + column + " AS " + column;
+}).join(", ");
+
+
+var trunc_sql = "TRUNCATE TABLE " + DB + "." + SCHEMANAME + "." + TABLENAME + ";";
+
+try {
+    var trunc_sql_stmet = snowflake.createStatement({sqlText: trunc_sql});
+    var result3 = trunc_sql_stmet.execute();
+} catch(err) {
+    return "Error :" + err;
+}
+
+
+var copy_sql = "COPY INTO " + DB + "." + SCHEMANAME + "." + TABLENAME +
+    " FROM (SELECT " + select_list + 
+    ", CURRENT_TIMESTAMP() AS audit_column" + // Add the audit_column with current timestamp
+    " FROM @" +
+    "\"TEST_ABHAY\".\"INGESTION_SCHEMA_PARQUET\".\"TABLEA_EMPING_STAGE\"" +
+    " (FILE_FORMAT => TEST_ABHAY.INGESTION_SCHEMA_PARQUET.PARQUET_EMP_ING) t)";
+
+try{
+    var copy_sql_stmet = snowflake.createStatement({sqlText: copy_sql});
+    var result4 = copy_sql_stmet.execute();
+    result4.next();
+} catch(err){
+    return "Error :" + err;
+}
+
+return "Done";
+    
+$$;
+
+
+
+
+
+
+
+
+CREATE OR REPLACE PROCEDURE LOAD_FILE(DB VARCHAR, SCHEMANAME VARCHAR, TABLENAME VARCHAR)
+RETURNS STRING
+LANGUAGE JAVASCRIPT
+EXECUTE AS CALLER
+AS
+$$
+
+// Retrieving column names
+var stmt = snowflake.createStatement({
+    sqlText: `
+        WITH keys AS (
+            SELECT OBJECT_KEYS(PARSE_JSON($1)) AS column_names 
+            FROM @"TEST_ABHAY"."INGESTION_SCHEMA_PARQUET"."TABLEA_EMPING_STAGE"/ 
+            (FILE_FORMAT => TEST_ABHAY.INGESTION_SCHEMA_PARQUET.PARQUET_EMP_ING) 
+            LIMIT 1
+        ) 
+        SELECT column_names 
+        FROM keys
+    `,
+});
+
+try {
+    var result = stmt.execute();
+    result.next();
+    var v_column_names = result.getColumnValue(1);
+} catch(err) {
+    return "Error :" + err;
+}
+
+// List storing column mappings
+var select_list = v_column_names.map(function(column) {
+    return "PARSE_JSON($1):" + column + " AS " + column;
+}).join(", ");
+
+// Truncate the table
+var trunc_sql = "TRUNCATE TABLE " + DB + "." + SCHEMANAME + "." + TABLENAME + ";";
+
+try {
+    var trunc_sql_stmet = snowflake.createStatement({sqlText: trunc_sql});
+    var result3 = trunc_sql_stmet.execute();
+} catch(err) {
+    return "Error :" + err;
+}
+
+// COPY command with audit_column with current timestamp
+var copy_sql = "COPY INTO " + DB + "." + SCHEMANAME + "." + TABLENAME +
+    " FROM (SELECT " + select_list + 
+    ", CURRENT_TIMESTAMP() AS audit_column" + 
+    " FROM @" +
+    "\"TEST_ABHAY\".\"INGESTION_SCHEMA_PARQUET\".\"TABLEA_EMPING_STAGE\"" +
+    " (FILE_FORMAT => TEST_ABHAY.INGESTION_SCHEMA_PARQUET.PARQUET_EMP_ING) t)";
+
+var sourceRows = 0; // Variable to store the number of source rows
+var targetRows = 0; // Variable to store the number of target rows
+
+try {
+    var copy_sql_stmet = snowflake.createStatement({sqlText: copy_sql});
+    var result4 = copy_sql_stmet.execute();
+    sourceRows = result4.getNumRows(); // Get the number of source rows
+    
+    // Get the number of target rows by querying the target table
+    var count_sql = "SELECT COUNT(*) FROM " + DB + "." + SCHEMANAME + "." + TABLENAME;
+    var count_stmt = snowflake.createStatement({sqlText: count_sql});
+    var count_result = count_stmt.execute();
+    count_result.next();
+    targetRows = count_result.getColumnValue(1);
+
+} catch(err) {
+    return "Error :" + err;
+}
+
+return "source_rows=" + sourceRows + ";target_rows=" + targetRows;
+    
+$$;
